@@ -1,0 +1,90 @@
+#!/usr/bin/sh
+#
+# An example hook script to make use of push options.
+# The example simply echoes all push options that start with 'echoback='
+# and rejects all pushes when the "reject" push option is used.
+#
+# To enable this hook, rename this file to "pre-receive".
+#git checkout remote-branch-1
+#git --work-tree=/home/git/srv/git/project --git-dir=/home/git/srv/git/project.git checkout -f
+
+#cd /home/git/srv/git/project/demo
+execute_test() {
+	dir=$1
+	old_rev=$2
+	new_rev=$3
+	subproyect=$4
+	
+	#comparamos la nueva y antigua revision en busca de cambios
+	files=$(git diff --name-only $old_rev $new_rev -- ./$subproyect | wc -l)
+	echo "============== Cambios encontrados para $subproyect : $files ==================== "
+
+	#validamos si la carpeta sufrio cambios
+	if [ $files -gt 0 ]; then
+		## ejecutamos las pruebas unitarias
+		echo "\nEjecutando pruebas unitarias en $subproyect"
+		mvn clean test -f $dir/$subproyect
+	
+		if [ $? -eq 0 ]; then
+			echo 'Las pruebas unitarias se ejecutaron exitosamente'
+			return 0
+		else
+			echo 'Las pruebas unitarias fallaron, favor de solucionar el problema'
+			exit 1
+		fi
+	fi
+	#retornamos cero ya que la carpeta no sufrio cambios 
+	return 0
+	
+}
+
+## main function
+echo "Ejecutando script pre-receive"
+echo "Directorio actual $(pwd)"
+branch_name=$(git branch | grep "*" | sed "s/\* //")
+echo "Rama actual $branch_name"
+
+while read old_rev new_rev ref_name; do
+	
+	echo "\nNueva revision $newrev"
+	echo ""
+
+	## creamos la carpeta temporal con el id de la revision
+	echo "creando el directorio temporal"
+	tmp_file=$(pwd)/tmp/rev_$new_rev
+	mkdir -p $tmp_file
+	echo "se creo el directorio temporal $tmp_file"	
+
+	## guardamos el contenido de la nueva revision en la carpeta temporal
+	echo "guardando el cntenido de la revision en el directorio temporal"
+	git archive $new_rev | tar -x -C $tmp_file
+	
+	## se llamara al metodo execute test cada que deseemos buscar cambios y ejecutar pruebas en un subdirectorio
+	execute_test $tmp_file $old_rev $new_rev "Emisores/ModifAclaBf"
+	execute_test $tmp_file $old_rev $new_rev "Emisores/CcResponsabilidad"
+
+	#execute_test $tmp_file $old_rev $new_rev "demo2"
+	
+	
+	## eliminamos la carpeta temporal
+	rm -r $(pwd)/tmp/rev_$new_rev
+done
+
+
+
+if test -n "$GIT_PUSH_OPTION_COUNT"
+then
+	i=0
+	while test "$i" -lt "$GIT_PUSH_OPTION_COUNT"
+	do
+		eval "value=\$GIT_PUSH_OPTION_$i"
+		case "$value" in
+		echoback=*)
+			echo "echo from the pre-receive-hook: ${value#*=}" >&2
+			;;
+		reject)
+			exit 1
+		esac
+		i=$((i + 1))
+	done
+fi
